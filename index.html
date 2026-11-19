@@ -134,7 +134,32 @@
           <button class="ghost-btn" id="btnImport">导入数据</button>
           <input type="file" id="importFile" accept="application/json" hidden>
         </div>
-        <p class="hint">所有数据只存在你手机本地（IndexedDB），不上传任何服务器。换手机时用导出/导入迁移。</p>
+        <p class="hint">所有数据只存在你手机本地（IndexedDB）。换手机时用导出/导入迁移，或用下方 OpenList 云同步。</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">☁️ OpenList 云同步</div>
+        <label class="field">
+          <span>WebDAV 地址</span>
+          <input type="text" id="setDavUrl" placeholder="https://dav.你的域名:端口/dav/">
+        </label>
+        <label class="field">
+          <span>账号</span>
+          <input type="text" id="setDavUser" placeholder="OpenList 用户名" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>密码</span>
+          <input type="password" id="setDavPass" placeholder="OpenList 密码" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>备份文件名</span>
+          <input type="text" id="setDavFile" placeholder="stock-backup.json">
+        </label>
+        <div class="data-actions" style="margin-top:10px">
+          <button class="ghost-btn" id="btnDavUpload">⬆️ 上传到 OpenList</button>
+          <button class="ghost-btn" id="btnDavDownload">⬇️ 从 OpenList 下载</button>
+        </div>
+        <div class="sync-status" id="davStatus"><span class="sync-spinner"></span><span class="sync-text">账号密码只存本机。上传=存一份到 OpenList；下载=用云端覆盖本机（会先确认）。</span></div>
       </div>
     </section>
 

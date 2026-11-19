@@ -356,6 +356,14 @@ main{flex:1;min-height:0;position:relative}
   border:1px solid var(--line)}
 .digest-meta{font-size:10px;color:var(--text-3);margin-bottom:6px;font-weight:600}
 .data-actions{display:flex;gap:9px}
+/* 同步状态提示块 */
+.sync-status{display:none;align-items:center;gap:9px;margin-top:12px;padding:10px 12px;border-radius:12px;background:var(--surface-2);font-size:12.5px;color:var(--text-2);line-height:1.5}
+.sync-status.show{display:flex}
+.sync-status.ok{background:var(--brand-soft);color:var(--ok)}
+.sync-status.err{background:rgba(240,85,91,.12);color:var(--danger)}
+.sync-spinner{width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--brand);border-radius:50%;animation:syncSpin .8s linear infinite;flex:none}
+@keyframes syncSpin{to{transform:rotate(360deg)}}
+.sync-status.ok .sync-spinner,.sync-status.err .sync-spinner{display:none}
 
 /* ===================== 设置表单 ===================== */
 .field{display:block;margin-bottom:15px}

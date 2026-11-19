@@ -45,6 +45,10 @@
     memory: true,
     autoConsolidate: true,
     theme: 'green', // 'green' 翡翠绿 | 'black' 曜石黑
+    davUrl: '',
+    davUser: '',
+    davPass: '',
+    davFile: 'stock-backup.json',
   };
   let S = loadSettings();
   function loadSettings() {
@@ -1039,6 +1043,10 @@ ${convo}
     $('#ctxVal').textContent = S.ctx;
     $('#setMemory').checked = S.memory;
     $('#setAutoConsolidate').checked = S.autoConsolidate;
+    $('#setDavUrl').value = S.davUrl || '';
+    $('#setDavUser').value = S.davUser || '';
+    $('#setDavPass').value = S.davPass || '';
+    $('#setDavFile').value = S.davFile || 'stock-backup.json';
     applyTheme();
     updateMemChip();
   }
@@ -1056,6 +1064,10 @@ ${convo}
       saveSettings();
       applyTheme();
     }));
+    $('#setDavUrl').addEventListener('change', e => { S.davUrl = e.target.value.trim(); saveSettings(); });
+    $('#setDavUser').addEventListener('change', e => { S.davUser = e.target.value.trim(); saveSettings(); });
+    $('#setDavPass').addEventListener('change', e => { S.davPass = e.target.value; saveSettings(); });
+    $('#setDavFile').addEventListener('change', e => { S.davFile = e.target.value.trim() || 'stock-backup.json'; saveSettings(); });
   }
   function updateMemChip() {
     const chip = $('#memChip');
@@ -1082,6 +1094,86 @@ ${convo}
     } catch (e) {
       r.textContent = '❌ 失败：' + e.message;
       r.style.color = 'var(--danger)';
+    }
+  }
+
+  // ============================================================
+  // OpenList WebDAV 云同步（半自动：手动点上传/下载）
+  // ============================================================
+  function davStatus(msg, kind) {
+    const el = $('#davStatus');
+    if (!el) return;
+    const txt = el.querySelector('.sync-text') || el;
+    txt.textContent = msg;
+    el.classList.toggle('show', true);
+    el.classList.toggle('ok', kind === 'ok');
+    el.classList.toggle('err', kind === 'err');
+  }
+  function davConfig() {
+    const url = (S.davUrl || '').trim().replace(/\/+$/, '');
+    const file = (S.davFile || 'stock-backup.json').trim();
+    if (!url) throw new Error('请先填写 WebDAV 地址');
+    if (!S.davUser) throw new Error('请先填写 OpenList 账号');
+    if (!S.davPass) throw new Error('请先填写 OpenList 密码');
+    const token = btoa(unescape(encodeURIComponent(S.davUser + ':' + S.davPass)));
+    return { fileUrl: url + '/' + encodeURIComponent(file), token };
+  }
+  function davBusy(on) {
+    const up = $('#btnDavUpload'), down = $('#btnDavDownload');
+    if (up) up.disabled = on;
+    if (down) down.disabled = on;
+  }
+  async function davUpload() {
+    let started = false;
+    try {
+      const { fileUrl, token } = davConfig();
+      davBusy(true); started = true;
+      davStatus('① 正在整理本机数据…');
+      const data = await DB.exportAll();
+      data.syncedAt = Date.now();
+      const size = (JSON.stringify(data).length / 1024).toFixed(1);
+      davStatus(`② 正在上传到 OpenList（${size}KB）…`);
+      const res = await fetch(fileUrl, {
+        method: 'PUT',
+        headers: { 'Authorization': 'Basic ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status} ${t.slice(0, 100)}`);
+      }
+      davStatus(`✅ 上传完成 · ${new Date().toLocaleTimeString('zh-CN')} · ${size}KB`, 'ok');
+      toast('已上传到 OpenList');
+    } catch (e) {
+      davStatus('❌ 上传失败：' + e.message, 'err');
+      toast('上传失败：' + e.message, 3500);
+    } finally {
+      if (started) davBusy(false);
+    }
+  }
+  async function davDownload() {
+    let started = false;
+    try {
+      const { fileUrl, token } = davConfig();
+      if (!confirm('从 OpenList 下载会【覆盖本机全部数据】(聊天、记忆、专题)。\n确定继续吗？建议先「导出全部数据」留个底。')) return;
+      davBusy(true); started = true;
+      davStatus('① 正在从 OpenList 读取…');
+      const res = await fetch(fileUrl, {
+        method: 'GET',
+        headers: { 'Authorization': 'Basic ' + token },
+      });
+      if (res.status === 404) throw new Error('云端还没有备份文件，请先上传一次');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      davStatus('② 正在写入本机数据…');
+      const data = await res.json();
+      await DB.importAll(data);
+      davStatus(`✅ 下载完成 · ${new Date().toLocaleTimeString('zh-CN')} · 正在刷新…`, 'ok');
+      toast('下载成功，正在刷新…');
+      setTimeout(() => location.reload(), 800);
+    } catch (e) {
+      davStatus('❌ 下载失败：' + e.message, 'err');
+      toast('下载失败：' + e.message, 3500);
+      if (started) davBusy(false);
     }
   }
 
@@ -1238,6 +1330,8 @@ ${convo}
     });
 
     $('#btnTest').addEventListener('click', testConnection);
+    $('#btnDavUpload').addEventListener('click', davUpload);
+    $('#btnDavDownload').addEventListener('click', davDownload);
     bindSettings();
   }
 

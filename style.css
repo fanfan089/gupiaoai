@@ -1,43 +1,48 @@
 /* ============================================================
-   我的 AI 助手 — 视觉系统 v5 · 翡翠绿
-   现代 · 精致 · 有呼吸感
+   股研助手 — 视觉系统 · 双主题（翡翠绿 / 曜石黑）
+   切换：设置页「外观主题」，状态存本地
    ============================================================ */
 :root{
-  /* 品牌 —— 翡翠绿 → 青绿 的现代渐变 */
-  --brand:#d92b2b; --brand-2:#e63946; --brand-3:#f0555b;
-  --grad:linear-gradient(135deg,#c81e2c 0%,#e63946 55%,#f4696f 140%);
-  --grad-soft:linear-gradient(135deg,rgba(200,30,44,.12),rgba(230,57,70,.09),rgba(244,105,111,.11));
+  /* 翡翠绿（默认） */
+  --brand:#0d9e74; --brand-2:#0eaa85; --brand-3:#22c55e;
+  --grad:linear-gradient(135deg,#0d9488 0%,#10b981 55%,#34d399 140%);
+  --grad-soft:linear-gradient(135deg,rgba(13,148,136,.12),rgba(16,185,129,.09),rgba(52,211,153,.11));
 
-  /* 浅色 */
-  --bg:#faf5f5; --bg-2:#f3eaea;
-  --surface:#ffffff; --surface-2:#faf1f1; --line:#f0e2e2;
-  --text:#2a1414; --text-2:#8a7575; --text-3:#ad9a9a;
-  --brand-soft:#fdecec;
-  --danger:#8b1a1a; --ok:#2fbf71; --warn:#f5a524;
-  --bubble-ai:#ffffff; --bubble-me-1:#c81e2c; --bubble-me-2:#e63946;
+  --bg:#f3f8f6; --bg-2:#eaf3ef;
+  --surface:#ffffff; --surface-2:#f1f7f4; --line:#e2ece7;
+  --text:#12241d; --text-2:#708079; --text-3:#9aa9a2;
+  --brand-soft:#e6f7f0;
+  --danger:#f0555b; --ok:#2fbf71; --warn:#f5a524;
+  --bubble-ai:#ffffff; --bubble-me-1:#0d9488; --bubble-me-2:#10b981;
 
   --shadow-sm:0 1px 2px rgba(6,62,50,.05),0 2px 8px rgba(6,62,50,.05);
   --shadow:0 4px 18px rgba(6,62,50,.09);
   --shadow-lg:0 12px 40px rgba(6,62,50,.15);
   --radius:18px; --radius-lg:22px;
-
   --safe-b:env(safe-area-inset-bottom,0px); --safe-t:env(safe-area-inset-top,0px);
 }
-@media (prefers-color-scheme:dark){
-  :root{
-    --bg:#150d0d; --bg-2:#1c1212;
-    --surface:#1f1616; --surface-2:#2a1e1e; --line:#382727;
-    --text:#f6eeee; --text-2:#a59393; --text-3:#7c6969;
-    --brand:#f4696f; --brand-2:#f0555b; --brand-3:#f87171;
-    --grad:linear-gradient(135deg,#c81e2c 0%,#e63946 55%,#f4696f 140%);
-    --grad-soft:linear-gradient(135deg,rgba(200,30,44,.16),rgba(230,57,70,.1),rgba(244,105,111,.12));
-    --brand-soft:#3a1a1a;
-    --bubble-ai:#231a1a; --bubble-me-1:#a31622; --bubble-me-2:#c81e2c;
-    --shadow-sm:0 1px 2px rgba(0,0,0,.3);
-    --shadow:0 6px 24px rgba(0,0,0,.35);
-    --shadow-lg:0 16px 48px rgba(0,0,0,.5);
-  }
+/* 曜石黑：深色背景 + 绿色点缀 */
+html[data-theme="black"]{
+  --brand:#4ade80; --brand-2:#34d399; --brand-3:#22c55e;
+  --grad:linear-gradient(135deg,#15803d 0%,#16a34a 55%,#4ade80 140%);
+  --grad-soft:linear-gradient(135deg,rgba(34,197,94,.16),rgba(52,211,153,.1),rgba(74,222,128,.12));
+  --bg:#0a0b0a; --bg-2:#030403;
+  --surface:#161917; --surface-2:#202420; --line:#2e342e;
+  --text:#f2f5f2; --text-2:#9aa69a; --text-3:#6b766b;
+  --brand-soft:#14301f;
+  --danger:#f87171; --ok:#4ade80; --warn:#fbbf24;
+  --bubble-ai:#161917; --bubble-me-1:#166534; --bubble-me-2:#15803d;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+  --shadow:0 6px 24px rgba(0,0,0,.5);
+  --shadow-lg:0 16px 48px rgba(0,0,0,.7);
 }
+/* 主题选择按钮 */
+.theme-picker{display:flex;gap:10px}
+.theme-opt{flex:1;border:1.5px solid var(--line);background:var(--surface-2);border-radius:14px;padding:12px 8px;text-align:center;cursor:pointer;color:var(--text-2);font-size:13px;transition:.2s}
+.theme-opt .swatch{width:26px;height:26px;border-radius:50%;margin:0 auto 7px;box-shadow:0 1px 4px rgba(0,0,0,.18)}
+.theme-opt[data-theme-opt="green"] .swatch{background:linear-gradient(135deg,#0d9488,#34d399)}
+.theme-opt[data-theme-opt="black"] .swatch{background:linear-gradient(135deg,#1a1a1a 45%,#4ade80 46%)}
+.theme-opt.active{border-color:var(--brand);background:var(--brand-soft);color:var(--brand);font-weight:600}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0;height:100%;background:var(--bg-2);color:var(--text);
   font-family:-apple-system,BlinkMacSystemFont,"HarmonyOS Sans SC","PingFang SC","Microsoft YaHei",sans-serif;

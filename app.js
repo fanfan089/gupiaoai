@@ -44,6 +44,7 @@
     ctx: 12,
     memory: true,
     autoConsolidate: true,
+    theme: 'green', // 'green' 翡翠绿 | 'black' 曜石黑
   };
   let S = loadSettings();
   function loadSettings() {
@@ -51,6 +52,14 @@
     catch { return { ...DEFAULT_SETTINGS }; }
   }
   function saveSettings() { localStorage.setItem('stockai.settings', JSON.stringify(S)); }
+  // 应用外观主题：给 <html> 打标记，CSS 根据 data-theme 切换整套配色
+  function applyTheme() {
+    const t = (S.theme === 'black') ? 'black' : 'green';
+    document.documentElement.setAttribute('data-theme', t);
+    const meta = $('#metaTheme');
+    if (meta) meta.setAttribute('content', t === 'black' ? '#0a0b0a' : '#0d9e74');
+    $$('.theme-opt').forEach(b => b.classList.toggle('active', b.dataset.themeOpt === t));
+  }
 
   // ---------- 运行时状态 ----------
   const state = {
@@ -548,6 +557,36 @@ ${convo}
     return m.content || '';
   }
 
+  // 规范化发给 API 的消息序列：删过单条消息 / 中止生成后，历史可能残留
+  // 连续 assistant 或以 assistant 开头，DeepSeek 会报
+  // "an assistant message must follow a user message"（HTTP 400）
+  function sanitizeChatMessages(list) {
+    const out = [];
+    for (const m of list) {
+      const c = m && m.content;
+      const empty = (c == null || c === '') || (typeof c === 'string' && !c.trim()) || (Array.isArray(c) && !c.length);
+      if (empty) continue;
+      const role = m.role === 'assistant' ? 'assistant' : 'user';
+      // 没有配对的提问 → 孤立回复，丢弃
+      if (role === 'assistant' && (!out.length || out[out.length - 1].role !== 'user')) continue;
+      // 连续提问合并为一条，保持 user/assistant 严格交替
+      if (role === 'user' && out.length && out[out.length - 1].role === 'user') {
+        const prev = out[out.length - 1];
+        if (typeof prev.content === 'string' && typeof c === 'string') {
+          prev.content = prev.content + '\n' + c;
+        } else {
+          const arr = x => Array.isArray(x) ? x.slice() : [{ type: 'text', text: String(x || '') }];
+          prev.content = arr(prev.content).concat(arr(c));
+        }
+        continue;
+      }
+      out.push({ role, content: c });
+    }
+    // 末尾必须是 user（当前输入）
+    while (out.length && out[out.length - 1].role === 'assistant') out.pop();
+    return out;
+  }
+
   async function send(text) {
     text = (text || '').trim();
     // 取走待发送图片（即使没有文字，只要发了图片就允许发送）
@@ -577,6 +616,9 @@ ${convo}
     const payloadMsgs = [{ role: 'system', content: sys.text }];
     for (const m of history) payloadMsgs.push({ role: m.role, content: toContent(m, canImage) });
     payloadMsgs.push({ role: 'user', content: toContent(userMsg, canImage) });
+    // 删过消息后历史 role 可能乱序，规范化后再发送，避免 HTTP 400
+    const bodyMsgs = sanitizeChatMessages(payloadMsgs.slice(1));
+    payloadMsgs.splice(1, payloadMsgs.length - 1, ...bodyMsgs);
 
     const aiMsg = { id: uid(), examId: activeKey(), role: 'assistant', content: '', layers: sys.layers, ts: now() };
     const bubble = appendMsgBubble(aiMsg, true);
@@ -997,6 +1039,7 @@ ${convo}
     $('#ctxVal').textContent = S.ctx;
     $('#setMemory').checked = S.memory;
     $('#setAutoConsolidate').checked = S.autoConsolidate;
+    applyTheme();
     updateMemChip();
   }
   function bindSettings() {
@@ -1008,6 +1051,11 @@ ${convo}
     $('#setCtx').addEventListener('input', e => { S.ctx = +e.target.value; $('#ctxVal').textContent = S.ctx; saveSettings(); });
     $('#setMemory').addEventListener('change', e => { S.memory = e.target.checked; saveSettings(); updateMemChip(); });
     $('#setAutoConsolidate').addEventListener('change', e => { S.autoConsolidate = e.target.checked; saveSettings(); });
+    $$('.theme-opt').forEach(b => b.addEventListener('click', () => {
+      S.theme = b.dataset.themeOpt;
+      saveSettings();
+      applyTheme();
+    }));
   }
   function updateMemChip() {
     const chip = $('#memChip');
@@ -1205,17 +1253,12 @@ ${convo}
     await setChatMode(state.chatMode, false); // 应用模式 UI（不重复加载）
     await loadMessages();
     if ('serviceWorker' in navigator) {
-      // 新版本 Service Worker 接管后，自动刷新一次页面，让界面立刻更新到最新
-      let reloaded = false;
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (reloaded) return;
-        reloaded = true;
-        // 避免打断正在输出的回复：生成中不自动刷新，交给用户下次打开生效
-        if (!state.streaming) location.reload();
-      });
+      // 只注册离线缓存，不自动刷新页面（避免手机浏览器卡顿）
       navigator.serviceWorker.register('sw.js').catch(() => {});
     }
   }
 
+  // 尽早应用主题，避免黑色主题用户首屏闪一下绿色
+  applyTheme();
   document.addEventListener('DOMContentLoaded', init);
 })();

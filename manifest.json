@@ -1,0 +1,16 @@
+{
+  "name": "股研助手 · 选股研究",
+  "short_name": "股研助手",
+  "description": "接入你自己 DeepSeek API 的股票研究助手，给具体行业方向和个股候选，带长期记忆",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fbeded",
+  "theme_color": "#d92b2b",
+  "lang": "zh-CN",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

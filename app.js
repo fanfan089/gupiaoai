@@ -544,6 +544,13 @@ ${convo}
     return m.includes('flash') || m.includes('vision');
   }
 
+  // 当前模型是否支持服务端工具（联网搜索 deepseek_web_search / 读网页 deepseek_read_url）
+  // 只有 flash 系列支持；v4-pro 纯文本模型带上 tools 会报 HTTP 400
+  function modelSupportsTools() {
+    const m = String(S.model || '').toLowerCase();
+    return m.includes('flash');
+  }
+
   // 把历史消息转成 API 的 content：纯文字用字符串，带图片用内容块数组。
   // 若当前模型不支持图片，则把图片降级成文字占位，避免历史图片触发 400 错误。
   function toContent(m, includeImages) {
@@ -615,6 +622,9 @@ ${convo}
     if (images.length && !canImage) {
       toast('当前模型不支持看图，图片已按文字说明发送。要看图请在设置里换 deepseek-flash', 4000);
     }
+    if (S.webSearch && !modelSupportsTools()) {
+      toast('当前 v4-pro 模型不支持联网搜索，已自动关闭本次联网。需要联网请在设置里换 deepseek-flash', 4000);
+    }
     const ctxCount = S.ctx;
     const history = state.messages.filter(m => m.role !== 'system' && m.id !== userMsg.id).slice(-ctxCount);
     const payloadMsgs = [{ role: 'system', content: sys.text }];
@@ -654,7 +664,7 @@ ${convo}
           stream: true,
           thinking: { type: S.thinking ? 'enabled' : 'disabled' },
           ...(S.thinking ? { reasoning_effort: 'medium' } : {}),
-          ...(S.webSearch ? { tools: [{ type: 'deepseek_web_search' }] } : {}),
+          ...(S.webSearch && modelSupportsTools() ? { tools: [{ type: 'deepseek_web_search' }] } : {}),
         }),
       });
       if (!res.ok) {

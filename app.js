@@ -40,6 +40,7 @@
     baseUrl: 'https://api.deepseek.com',
     model: 'deepseek-flash',
     modelMode: 'manual', // manual 手动 | auto 自动 | chain 双模型接力
+    layout: 'full', // full 通栏铺满（默认）| bubble 气泡对话
     thinking: false,
     webSearch: true,
     ctx: 12,
@@ -1178,6 +1179,13 @@ ${convo}
     if (view === 'memory') renderMemory();
   }
 
+  // 消息显示样式：给 <html> 打标记，CSS 据此切换通栏 / 气泡
+  function applyLayout() {
+    const lay = (S.layout === 'bubble') ? 'bubble' : 'full';
+    document.documentElement.setAttribute('data-layout', lay);
+    document.querySelectorAll('.layout-opt').forEach(b => b.classList.toggle('active', b.dataset.layoutOpt === lay));
+  }
+
   // 模型策略联动：更新说明文字、显隐手动模型下拉
   function applyModelMode() {
     const mode = S.modelMode || 'manual';
@@ -1197,6 +1205,7 @@ ${convo}
     $('#setBaseUrl').value = S.baseUrl;
     $('#setModel').value = S.model;
     applyModelMode();
+    applyLayout();
     $('#setWebSearch').checked = S.webSearch;
     $('#setThinking').checked = S.thinking;
     $('#setCtx').value = S.ctx;
@@ -1215,6 +1224,9 @@ ${convo}
     $('#setBaseUrl').addEventListener('change', e => { S.baseUrl = e.target.value.trim() || DEFAULT_SETTINGS.baseUrl; saveSettings(); });
     $('#setModel').addEventListener('change', e => { S.model = e.target.value; saveSettings(); });
     $('#setModelMode').addEventListener('change', e => { S.modelMode = e.target.value; saveSettings(); applyModelMode(); });
+    document.querySelectorAll('.layout-opt').forEach(b => b.addEventListener('click', () => {
+      S.layout = b.dataset.layoutOpt; saveSettings(); applyLayout();
+    }));
     $('#setWebSearch').addEventListener('change', e => { S.webSearch = e.target.checked; saveSettings(); });
     $('#setThinking').addEventListener('change', e => { S.thinking = e.target.checked; saveSettings(); });
     $('#setCtx').addEventListener('input', e => { S.ctx = +e.target.value; $('#ctxVal').textContent = S.ctx; saveSettings(); });
@@ -1515,5 +1527,6 @@ ${convo}
 
   // 尽早应用主题，避免黑色主题用户首屏闪一下绿色
   applyTheme();
+  applyLayout();
   document.addEventListener('DOMContentLoaded', init);
 })();

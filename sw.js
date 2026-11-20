@@ -1,5 +1,5 @@
 /* Service Worker — 离线缓存壳（缓存优先，稳定不卡顿）*/
-const CACHE = 'stock-ai-shell-v9';
+const CACHE = 'stock-ai-shell-v10';
 const ASSETS = ['./', './index.html', './style.css', './db.js', './app.js', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

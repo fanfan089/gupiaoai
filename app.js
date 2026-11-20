@@ -39,6 +39,7 @@
     apiKey: '',
     baseUrl: 'https://api.deepseek.com',
     model: 'deepseek-flash',
+    modelMode: 'manual', // manual 手动 | auto 自动 | chain 双模型接力
     thinking: false,
     webSearch: true,
     ctx: 12,
@@ -465,20 +466,90 @@ ${convo}
   // 极简 Markdown 渲染
   function md(text) {
     if (!text) return '';
-    const esc = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    let h = esc.replace(/```([\w-]*)\n([\s\S]*?)```/g, (_, lang, code) => `<pre><code>${code}</code></pre>`);
-    h = h.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-    h = h.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    h = h.replace(/^###\s+(.+)$/gm, '<strong>$1</strong>');
-    h = h.replace(/^##\s+(.+)$/gm, '<strong>$1</strong>');
-    h = h.replace(/^#\s+(.+)$/gm, '<strong>$1</strong>');
-    h = renderTables(h);
-    h = h.replace(/^\s*[-*]\s+(.+)$/gm, '<li>$1</li>');
-    h = h.replace(/(<li>[\s\S]*?<\/li>)(?!\s*<li>)/g, '<ul>$1</ul>');
-    h = h.replace(/\n/g, '<br>');
-    h = h.replace(/<\/ul><br>/g, '</ul>').replace(/<br><ul>/g, '<ul>');
-    h = h.replace(/<\/table><br>/g, '</table>').replace(/<br><div class="md-table-wrap">/g, '<div class="md-table-wrap">');
-    return h;
+    const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const stash = [];
+    const keep = html => { stash.push(html); return '\uE000' + (stash.length - 1) + '\uE001'; };
+    // 行内格式：行内代码 / 链接 / 加粗 / 删除线。代码块用哨兵占位，避免被后续规则误伤
+    const inline = s => {
+      let t = esc(s);
+      t = t.replace(/`([^`]+)`/g, (_, c) => keep('<code>' + c + '</code>'));
+      t = t.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, label, url) => keep('<a class="md-link" href="' + url + '" target="_blank" rel="noopener">' + label + '</a>'));
+      t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      t = t.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+      return t;
+    };
+    // 先抽出围栏代码块，整体占位（前后补换行，保证独占一行）
+    let src = String(text).replace(/```[\w-]*\n?([\s\S]*?)```/g, (_, code) =>
+      '\n' + keep('<pre class="md-pre"><code>' + esc(code.replace(/\n$/, '')) + '</code></pre>') + '\n');
+
+    const lines = src.split('\n');
+    const out = [];
+    let para = [];
+    const flushPara = () => {
+      if (!para.length) return;
+      out.push('<p class="md-p">' + para.map(inline).join('<br>') + '</p>');
+      para = [];
+    };
+    const cell = l => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(s => s.trim());
+    const isRow = l => /^\s*\|.*\|\s*$/.test(l);
+    const isSep = l => /^\s*\|[\s:|\-]+\|\s*$/.test(l);
+
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      // 代码块占位行
+      if (/^\uE000\d+\uE001$/.test(trimmed)) { flushPara(); out.push(trimmed); i++; continue; }
+      // 表格
+      if (isRow(line) && i + 1 < lines.length && isSep(lines[i + 1])) {
+        flushPara();
+        const head = cell(line); i += 2;
+        const rows = [];
+        while (i < lines.length && isRow(lines[i])) { rows.push(cell(lines[i])); i++; }
+        let t = '<div class="md-table-wrap"><table class="md-table"><thead><tr>';
+        head.forEach(c => { t += '<th>' + inline(c) + '</th>'; });
+        t += '</tr></thead><tbody>';
+        rows.forEach(r => { t += '<tr>'; for (let k = 0; k < head.length; k++) t += '<td>' + inline(r[k] != null ? r[k] : '') + '</td>'; t += '</tr>'; });
+        t += '</tbody></table></div>';
+        out.push(t);
+        continue;
+      }
+      // 空行 → 段落分隔
+      if (!trimmed) { flushPara(); i++; continue; }
+      // 分隔线
+      if (/^(---+|\*\*\*+|___+)$/.test(trimmed)) { flushPara(); out.push('<hr class="md-hr">'); i++; continue; }
+      // 标题 #/##/###
+      let m;
+      if ((m = line.match(/^(#{1,3})\s+(.+)$/))) { flushPara(); out.push('<div class="md-h md-h' + m[1].length + '">' + inline(m[2]) + '</div>'); i++; continue; }
+      // 引用（连续 > 行）
+      if (/^\s*>/.test(line)) {
+        flushPara();
+        const buf = [];
+        while (i < lines.length && /^\s*>/.test(lines[i])) { buf.push(inline(lines[i].replace(/^\s*>\s?/, ''))); i++; }
+        out.push('<blockquote class="md-quote">' + buf.join('<br>') + '</blockquote>');
+        continue;
+      }
+      // 无序列表
+      if (/^\s*[-*]\s+/.test(line)) {
+        flushPara();
+        const items = [];
+        while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) { items.push('<li>' + inline(lines[i].replace(/^\s*[-*]\s+/, '')) + '</li>'); i++; }
+        out.push('<ul class="md-ul">' + items.join('') + '</ul>');
+        continue;
+      }
+      // 有序列表
+      if (/^\s*\d+[.)]\s+/.test(line)) {
+        flushPara();
+        const items = [];
+        while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) { items.push('<li>' + inline(lines[i].replace(/^\s*\d+[.)]\s+/, '')) + '</li>'); i++; }
+        out.push('<ol class="md-ol">' + items.join('') + '</ol>');
+        continue;
+      }
+      // 普通文本行
+      para.push(line); i++;
+    }
+    flushPara();
+    return out.join('').replace(/\uE000(\d+)\uE001/g, (_, n) => stash[+n] || '');
   }
 
   // 把 Markdown 表格解析成 HTML 表格（在换行转 <br> 之前调用）
@@ -539,16 +610,40 @@ ${convo}
   }
 
   // 当前模型是否支持看图：flash 系列原生多模态；v4-pro 为纯文本
-  function modelSupportsVision() {
-    const m = String(S.model || '').toLowerCase();
+  function modelSupportsVision(model) {
+    const m = String(model || S.model || '').toLowerCase();
     return m.includes('flash') || m.includes('vision');
   }
 
   // 当前模型是否支持服务端工具（联网搜索 deepseek_web_search / 读网页 deepseek_read_url）
   // 只有 flash 系列支持；v4-pro 纯文本模型带上 tools 会报 HTTP 400
-  function modelSupportsTools() {
-    const m = String(S.model || '').toLowerCase();
+  function modelSupportsTools(model) {
+    const m = String(model || S.model || '').toLowerCase();
     return m.includes('flash');
+  }
+
+  // 把 content（字符串或含图片的内容块）降级成纯文字，供不支持看图的模型使用
+  function toPlainText(c) {
+    if (typeof c === 'string') return c;
+    if (Array.isArray(c)) return c.map(p => p && p.type === 'text' ? (p.text || '') : (p && p.type === 'image_url' ? '（用户发送了一张图片）' : '')).join('\n');
+    return String(c || '');
+  }
+
+  // 依据「模型策略」生成本次请求的执行计划
+  // manual 手动固定模型；auto 自动（联网/看图→flash，纯文字→v4-pro）；chain 接力（flash 联网搜资料→v4-pro 深度分析）
+  function buildPlan(hasImages) {
+    const mode = S.modelMode || 'manual';
+    const wantSearch = !!S.webSearch;
+    if (mode === 'chain') {
+      return { mode: 'chain', model: 'deepseek-v4-pro', useTools: false, canImage: true, needResearch: true };
+    }
+    if (mode === 'auto') {
+      const useFlash = wantSearch || !!hasImages;
+      const model = useFlash ? 'deepseek-flash' : 'deepseek-v4-pro';
+      return { mode: 'auto', model, useTools: useFlash && wantSearch && modelSupportsTools(model), canImage: modelSupportsVision(model), needResearch: false };
+    }
+    const model = S.model || 'deepseek-flash';
+    return { mode: 'manual', model, useTools: wantSearch && modelSupportsTools(model), canImage: modelSupportsVision(model), needResearch: false };
   }
 
   // 把历史消息转成 API 的 content：纯文字用字符串，带图片用内容块数组。
@@ -618,12 +713,13 @@ ${convo}
     appendMsgBubble(userMsg);
 
     // 组装发给 API 的消息（系统提示 + 最近 N 条 + 当前输入）
-    const canImage = modelSupportsVision();
+    const plan = buildPlan(images.length > 0);
+    const canImage = plan.canImage;
     if (images.length && !canImage) {
-      toast('当前模型不支持看图，图片已按文字说明发送。要看图请在设置里换 deepseek-flash', 4000);
+      toast('当前模型不支持看图，图片已按文字说明发送。要看图请选 deepseek-flash 或用「自动」策略', 4000);
     }
-    if (S.webSearch && !modelSupportsTools()) {
-      toast('当前 v4-pro 模型不支持联网搜索，已自动关闭本次联网。需要联网请在设置里换 deepseek-flash', 4000);
+    if (plan.mode === 'manual' && S.webSearch && !plan.useTools) {
+      toast('v4-pro 不支持联网搜索，本次已跳过联网。要联网请选 flash 或用「自动/接力」策略', 4000);
     }
     const ctxCount = S.ctx;
     const history = state.messages.filter(m => m.role !== 'system' && m.id !== userMsg.id).slice(-ctxCount);
@@ -636,12 +732,13 @@ ${convo}
 
     const aiMsg = { id: uid(), examId: activeKey(), role: 'assistant', content: '', layers: sys.layers, ts: now() };
     const bubble = appendMsgBubble(aiMsg, true);
-    await runGeneration(payloadMsgs, sys, aiMsg, bubble, { isRetry: false });
+    await runGeneration(payloadMsgs, sys, aiMsg, bubble, { isRetry: false, plan });
   }
 
   // 真正执行流式请求；发送与"重新生成"共用。sys 为空时重试会重建上下文。
   async function runGeneration(payloadMsgs, sys, aiMsg, bubble, opt) {
     opt = opt || {};
+    const plan = opt.plan || buildPlan(false);
     setStreaming(true);
     $('#typing').hidden = false;
     let full = '';
@@ -654,17 +751,55 @@ ${convo}
 
     try {
       state.controller = new AbortController();
-      const res = await fetch(`${S.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+      const signal = state.controller.signal;
+      const api = S.baseUrl.replace(/\/$/, '') + '/chat/completions';
+      const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${S.apiKey}` };
+      let useMsgs = payloadMsgs;
+
+      // 接力模式：① 用 flash 联网搜集资料 ② 把资料并入系统提示，交给 v4-pro 深度分析
+      if (opt.cachedMsgs) {
+        useMsgs = opt.cachedMsgs; // 重试时复用，避免重复联网花钱
+      } else if (plan.needResearch) {
+        gen.setStage('① 正在联网搜集资料…');
+        bubble.innerHTML = '<div class="searching-hint"><span class="spin"></span>① 正在联网搜集资料，再交给深度模型分析…</div>';
+        let research = '';
+        try {
+          const rMsgs = payloadMsgs.map(m => ({ ...m }));
+          const li = rMsgs.length - 1;
+          const ask = '\n\n【请联网检索这个问题的最新信息、数据与要点，整理成一份带来源链接的结构化资料摘要；只给资料，不要下最终结论】';
+          const cur = rMsgs[li].content;
+          // 当前消息若带图片（内容块数组），保留图片给 flash 看，只把指令追加为文字块
+          rMsgs[li] = { role: 'user', content: Array.isArray(cur) ? cur.concat([{ type: 'text', text: ask }]) : (toPlainText(cur) + ask) };
+          const rr = await fetch(api, {
+            method: 'POST', headers, signal,
+            body: JSON.stringify({
+              model: 'deepseek-flash', messages: rMsgs, stream: false,
+              thinking: { type: 'disabled' }, tools: [{ type: 'deepseek_web_search' }],
+            }),
+          });
+          if (rr.ok) { const j = await rr.json(); research = (j.choices?.[0]?.message?.content || '').trim(); }
+        } catch (e) { /* 检索失败则降级 */ }
+        if (!research) toast('联网资料未取到，已改用模型自身知识分析', 3000);
+        // 最终模型为 v4-pro（不支持看图），统一降级为纯文字
+        useMsgs = payloadMsgs.map(m => ({ ...m, content: toPlainText(m.content) }));
+        if (research) {
+          useMsgs[0] = { role: 'system', content: String(useMsgs[0].content || '') + '\n\n【以下是联网检索到的资料，请结合它分析作答，注意甄别、关键信息标注来源】\n' + research };
+        }
+        opt.cachedMsgs = useMsgs;
+        gen.setStage('② 正在深度分析…');
+      }
+
+      const res = await fetch(api, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${S.apiKey}` },
-        signal: state.controller.signal,
+        headers,
+        signal,
         body: JSON.stringify({
-          model: S.model,
-          messages: payloadMsgs,
+          model: plan.model,
+          messages: useMsgs,
           stream: true,
           thinking: { type: S.thinking ? 'enabled' : 'disabled' },
           ...(S.thinking ? { reasoning_effort: 'medium' } : {}),
-          ...(S.webSearch && modelSupportsTools() ? { tools: [{ type: 'deepseek_web_search' }] } : {}),
+          ...(plan.useTools ? { tools: [{ type: 'deepseek_web_search' }] } : {}),
         }),
       });
       if (!res.ok) {
@@ -771,7 +906,7 @@ ${convo}
             const rb = ev.currentTarget;
             rb.disabled = true; rb.textContent = '🔄 正在重试…';
             bubble.innerHTML = '';
-            await runGeneration(payloadMsgs, sys, aiMsg, bubble, { isRetry: true });
+            await runGeneration(payloadMsgs, sys, aiMsg, bubble, { isRetry: true, plan, cachedMsgs: opt.cachedMsgs });
           });
         }
         toast('请求失败：' + e.message, 3500);
@@ -1043,10 +1178,25 @@ ${convo}
     if (view === 'memory') renderMemory();
   }
 
+  // 模型策略联动：更新说明文字、显隐手动模型下拉
+  function applyModelMode() {
+    const mode = S.modelMode || 'manual';
+    const sel = $('#setModelMode'); if (sel) sel.value = mode;
+    const hint = $('#modelModeHint');
+    const field = $('#modelField');
+    if (field) field.hidden = (mode !== 'manual');
+    if (hint) hint.textContent = mode === 'manual'
+      ? '固定使用下面手动选择的模型。'
+      : mode === 'auto'
+        ? '自动：要联网或发图片时用 flash；纯文字聊天时用 v4-pro 深度推理。不加钱。'
+        : '接力：每条消息先用 flash 联网搜资料，再交 v4-pro 深度分析。会调用两次 API，费用约翻倍。';
+  }
+
   function fillSettings() {
     $('#setApiKey').value = S.apiKey;
     $('#setBaseUrl').value = S.baseUrl;
     $('#setModel').value = S.model;
+    applyModelMode();
     $('#setWebSearch').checked = S.webSearch;
     $('#setThinking').checked = S.thinking;
     $('#setCtx').value = S.ctx;
@@ -1064,6 +1214,7 @@ ${convo}
     $('#setApiKey').addEventListener('change', e => { S.apiKey = e.target.value.trim(); saveSettings(); });
     $('#setBaseUrl').addEventListener('change', e => { S.baseUrl = e.target.value.trim() || DEFAULT_SETTINGS.baseUrl; saveSettings(); });
     $('#setModel').addEventListener('change', e => { S.model = e.target.value; saveSettings(); });
+    $('#setModelMode').addEventListener('change', e => { S.modelMode = e.target.value; saveSettings(); applyModelMode(); });
     $('#setWebSearch').addEventListener('change', e => { S.webSearch = e.target.checked; saveSettings(); });
     $('#setThinking').addEventListener('change', e => { S.thinking = e.target.checked; saveSettings(); });
     $('#setCtx').addEventListener('input', e => { S.ctx = +e.target.value; $('#ctxVal').textContent = S.ctx; saveSettings(); });
@@ -1093,13 +1244,13 @@ ${convo}
       const res = await fetch(`${S.baseUrl.replace(/\/$/, '')}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${S.apiKey}` },
-        body: JSON.stringify({ model: S.model, messages: [{ role: 'user', content: '回复"OK"两个字即可' }], stream: false, thinking: { type: 'disabled' }, max_tokens: 20 }),
+        body: JSON.stringify({ model: buildPlan(false).model, messages: [{ role: 'user', content: '回复"OK"两个字即可' }], stream: false, thinking: { type: 'disabled' }, max_tokens: 20 }),
       });
       const txt = await res.text();
       if (!res.ok) throw new Error(`HTTP ${res.status}：${txt.slice(0, 140)}`);
       const data = JSON.parse(txt);
       const c = data.choices?.[0]?.message?.content || '';
-      r.textContent = `✅ 连接成功（${S.model}）：${c.slice(0, 40)}`;
+      r.textContent = `✅ 连接成功（${buildPlan(false).model}）：${c.slice(0, 40)}`;
       r.style.color = 'var(--ok)';
     } catch (e) {
       r.textContent = '❌ 失败：' + e.message;

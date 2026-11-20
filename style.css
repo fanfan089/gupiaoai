@@ -53,7 +53,7 @@ button,input,textarea,select{font-family:inherit;font-size:inherit}
 /* 确保 hidden 属性始终生效（否则 .typing/.attach-preview 的 display 会压过它） */
 [hidden]{display:none !important}
 
-#app{display:flex;flex-direction:column;height:100%;max-width:720px;margin:0 auto;background:var(--bg);
+#app{display:flex;flex-direction:column;height:100%;max-width:860px;margin:0 auto;background:var(--bg);
   box-shadow:0 0 60px rgba(6,50,42,.08);position:relative;overflow:hidden}
 
 /* ===================== 顶部栏 ===================== */
@@ -145,7 +145,7 @@ main{flex:1;min-height:0;position:relative}
 .quick-btn:active{transform:scale(.985);background:var(--surface-2)}
 
 /* 消息气泡 */
-.msg{display:flex;gap:6px;margin-bottom:8px;align-items:flex-start;animation:fadeUp .3s cubic-bezier(.2,.8,.2,1)}
+.msg{display:flex;gap:8px;margin-bottom:14px;align-items:flex-start;animation:fadeUp .3s cubic-bezier(.2,.8,.2,1)}
 @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .msg-avatar{width:26px;height:26px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;
   justify-content:center;font-size:15px;background:var(--surface);border:1px solid var(--line);
@@ -156,21 +156,27 @@ main{flex:1;min-height:0;position:relative}
 .msg-body{max-width:calc(100% - 32px);display:flex;flex-direction:column;min-width:0;flex:1}
 .msg-name{font-size:10.5px;color:var(--text-2);margin:0 0 4px 2px;font-weight:650}
 .msg.me .msg-name{text-align:right;margin-right:3px}
-.bubble{padding:8px 11px;border-radius:12px;font-size:14px;line-height:1.58;
+.bubble{padding:11px 14px;border-radius:14px;font-size:15px;line-height:1.72;
   background:var(--bubble-ai);border:1px solid var(--line);word-break:break-word;white-space:pre-wrap;
   box-shadow:var(--shadow-sm)}
 .msg.me .bubble{background:linear-gradient(135deg,var(--bubble-me-1),var(--bubble-me-2));
   border-color:transparent;color:#fff;border-bottom-right-radius:5px;
   box-shadow:0 4px 14px rgba(200,30,44,.27)}
 .msg.ai .bubble{border-bottom-left-radius:5px}
-.bubble.md p{margin:0 0 9px}.bubble.md p:last-child{margin-bottom:0}
-.bubble.md ul,.bubble.md ol{margin:7px 0;padding-left:20px}
-.bubble.md li{margin:3px 0}
+.bubble.md{white-space:normal}
+.bubble.md p.md-p{margin:0 0 12px}.bubble.md p.md-p:last-child{margin-bottom:0}
+.bubble.md ul,.bubble.md ol{margin:9px 0;padding-left:22px}
+.bubble.md li{margin:5px 0;line-height:1.7}
+.bubble.md ul.md-ul{list-style:disc}
+.bubble.md ol.md-ol{list-style:decimal}
 .bubble.md code{background:rgba(128,148,138,.16);padding:2px 6px;border-radius:5px;font-size:13px;
   font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .bubble.md pre{background:var(--surface-2);padding:12px;border-radius:10px;overflow-x:auto;margin:8px 0}
 .bubble.md pre code{background:none;padding:0}
 .bubble.md strong{font-weight:750}
+.bubble.md del{opacity:.6}
+.bubble.md a.md-link{color:var(--brand);text-decoration:underline;text-underline-offset:2px}
+.bubble.md pre.md-pre{margin:10px 0;line-height:1.6}
 .mem-used{font-size:10px;color:var(--text-3);margin-top:6px;display:flex;align-items:center;gap:5px;padding:0 3px}
 .msg.me .mem-used{justify-content:flex-end}
 .mem-used .dot{width:5px;height:5px;border-radius:50%;background:var(--brand)}
@@ -425,10 +431,10 @@ main{flex:1;min-height:0;position:relative}
 /* Markdown 表格 */
 .md-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:8px 0 10px;border-radius:10px;
   border:1px solid var(--line);box-shadow:var(--shadow-sm)}
-.md-table{width:100%;border-collapse:collapse;font-size:13px;white-space:normal}
-.md-table th,.md-table td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;line-height:1.5}
+.md-table{width:100%;border-collapse:collapse;font-size:14px;white-space:normal}
+.md-table th,.md-table td{border-bottom:1px solid var(--line);padding:10px 12px;text-align:left;line-height:1.6}
 .md-table th{background:var(--brand-soft);color:var(--brand);font-weight:700;font-size:12.5px;position:sticky;top:0}
-.md-table td:first-child{font-weight:600;color:var(--text);white-space:nowrap}
+.md-table td:first-child{font-weight:600;color:var(--text);white-space:normal;min-width:76px}
 .md-table tr:last-child td{border-bottom:none}
 .md-table tr:nth-child(even) td{background:var(--surface-2)}
 
@@ -438,6 +444,21 @@ main{flex:1;min-height:0;position:relative}
 .spin{width:14px;height:14px;border:2px solid var(--brand-soft);border-top-color:var(--brand);
   border-radius:50%;display:inline-block;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* 长回答结构化排版：标题分级 / 引用 / 分隔线 */
+.bubble.md .md-h{font-weight:780;letter-spacing:-.2px;line-height:1.45;margin:18px 0 9px;color:var(--text)}
+.bubble.md .md-h:first-child{margin-top:2px}
+.bubble.md .md-h1{font-size:18px;padding-left:11px;border-left:3px solid var(--brand)}
+.bubble.md .md-h2{font-size:16.5px;padding-left:9px;border-left:3px solid var(--brand-2)}
+.bubble.md .md-h3{font-size:15.5px;color:var(--brand);margin:14px 0 7px}
+.bubble.md .md-quote{margin:10px 0;padding:8px 12px;background:var(--brand-soft);
+  border-left:3px solid var(--brand);border-radius:0 8px 8px 0;color:var(--text-2);line-height:1.7}
+.bubble.md .md-hr{border:none;border-top:1px solid var(--line);margin:16px 0}
+.bubble.md img{max-width:100%;border-radius:8px}
+
+/* 模型策略说明 */
+#modelModeHint{margin:-6px 0 16px;padding:9px 12px;background:var(--surface-2);
+  border:1px solid var(--line);border-radius:10px;font-size:12px;color:var(--text-2);line-height:1.65}
 
 /* 引用来源 */
 .citations{margin-top:11px;padding-top:10px;border-top:1px solid var(--line)}

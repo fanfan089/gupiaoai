@@ -178,6 +178,15 @@
           <input type="text" id="setBaseUrl" placeholder="https://api.deepseek.com">
         </label>
         <label class="field">
+          <span>模型策略</span>
+          <select id="setModelMode">
+            <option value="manual">手动指定（用下面的模型）</option>
+            <option value="auto">🤖 自动选择（省钱省心·推荐）</option>
+            <option value="chain">🔗 双模型接力（联网+深度·费用翻倍）</option>
+          </select>
+        </label>
+        <p class="hint" id="modelModeHint"></p>
+        <label class="field" id="modelField">
           <span>模型</span>
           <select id="setModel">
             <option value="deepseek-flash">deepseek-flash（便宜·支持看图·推荐）</option>

@@ -81,6 +81,10 @@ button,input,textarea,select{font-family:inherit;font-size:inherit}
   border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;
   flex-shrink:0;margin-left:4px;transition:background .2s}
 .collapse-btn:active{background:var(--surface-2)}
+.icon-btn{width:30px;height:30px;border:none;background:transparent;color:var(--text-2);
+  border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;
+  flex-shrink:0;transition:background .2s,color .2s}
+.icon-btn:active{background:var(--surface-2);color:var(--brand)}
 .expand-handle{display:none;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   align-items:center;gap:3px;border:none;background:transparent;color:var(--text-3);
   font-size:11px;font-weight:600;cursor:pointer;padding:5px 14px;letter-spacing:.5px}
@@ -147,6 +151,8 @@ main{flex:1;min-height:0;position:relative}
 /* 消息气泡 */
 .msg{display:flex;gap:8px;margin-bottom:14px;align-items:flex-start;animation:fadeUp .3s cubic-bezier(.2,.8,.2,1)}
 @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.msg.msg-flash{animation:msgFlash 2.2s ease}
+@keyframes msgFlash{0%,60%{background:rgba(13,158,116,.14);box-shadow:0 0 0 6px rgba(13,158,116,.14)}100%{background:transparent;box-shadow:none}}
 .msg-avatar{width:26px;height:26px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;
   justify-content:center;font-size:15px;background:var(--surface);border:1px solid var(--line);
   box-shadow:var(--shadow-sm);font-weight:700}
@@ -196,6 +202,49 @@ html[data-layout="full"] .msg.me .msg-body{max-width:88%}
   transition:all .18s cubic-bezier(.2,.8,.2,1)}
 .layout-opt.active{border-color:var(--brand);background:var(--brand-soft);color:var(--brand);font-weight:750}
 .layout-opt:active{transform:scale(.98)}
+
+/* ===== 顶部搜索按钮 + 历史消息搜索面板 ===== */
+.search-sheet{max-height:88vh;display:flex;flex-direction:column}
+.search-bar{display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--line);
+  border-radius:12px;padding:0 12px;height:44px;color:var(--text-3)}
+.search-bar:focus-within{border-color:var(--brand)}
+.search-bar input{flex:1;min-width:0;border:none;background:transparent;outline:none;
+  font-size:15px;color:var(--text);font-family:inherit;-webkit-appearance:none}
+.search-bar input::placeholder{color:var(--text-3)}
+.search-clear{border:none;background:var(--surface);color:var(--text-3);width:24px;height:24px;
+  border-radius:50%;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.search-hint{font-size:11.5px;color:var(--text-2);line-height:1.6;margin:11px 2px 6px}
+.search-results{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;margin:0 -4px;padding:0 4px 8px}
+.search-item{padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface);
+  margin-bottom:9px;cursor:pointer;transition:background .18s,border-color .18s}
+.search-item:active{background:var(--surface-2);border-color:var(--brand)}
+.search-item-head{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.search-role{font-size:10px;font-weight:750;padding:2px 7px;border-radius:9px;background:var(--brand-soft);color:var(--brand)}
+.search-role.me{background:var(--surface-2);color:var(--text-2)}
+.search-scope{font-size:10px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.search-time{font-size:10px;color:var(--text-3);flex-shrink:0}
+.search-text{font-size:13px;line-height:1.6;color:var(--text);word-break:break-word;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.search-text mark{background:rgba(13,158,116,.2);color:var(--brand);border-radius:3px;padding:0 2px;font-weight:700}
+.search-empty{text-align:center;color:var(--text-3);font-size:13px;padding:34px 10px;line-height:1.7}
+.search-count{font-size:11px;color:var(--text-2);margin:2px 2px 10px}
+
+/* ===== 固定规则 ===== */
+.rules-view{margin-bottom:11px}
+.rules-empty{font-size:12px;color:var(--text-3);line-height:1.65;padding:6px 2px}
+.rule-item{display:flex;align-items:flex-start;gap:8px;padding:9px 10px;margin-bottom:7px;
+  background:var(--brand-soft);border:1px solid var(--line);border-radius:10px}
+.rule-num{flex-shrink:0;width:18px;height:18px;border-radius:50%;background:var(--brand);color:#fff;
+  font-size:10px;font-weight:750;display:flex;align-items:center;justify-content:center}
+.rule-text{flex:1;font-size:12.5px;line-height:1.6;color:var(--text);word-break:break-word;padding-top:1px}
+.rule-del{flex-shrink:0;border:none;background:transparent;color:var(--text-3);font-size:13px;
+  cursor:pointer;width:22px;height:22px;border-radius:6px;line-height:1}
+.rule-del:active{background:var(--surface-2);color:#e5484d}
+.rule-add{display:flex;gap:8px}
+.rule-add input{flex:1;min-width:0;border:1px solid var(--line);background:var(--surface);color:var(--text);
+  border-radius:10px;padding:9px 11px;font-size:13px;font-family:inherit;outline:none}
+.rule-add input:focus{border-color:var(--brand)}
+.rule-add .primary-btn{flex-shrink:0;padding:0 16px}
 
 .mem-used{font-size:10px;color:var(--text-3);margin-top:6px;display:flex;align-items:center;gap:5px;padding:0 3px}
 .msg.me .mem-used{justify-content:flex-end}

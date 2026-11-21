@@ -20,6 +20,9 @@
   <!-- 顶部栏 -->
   <header class="topbar" id="topbar">
     <div class="topbar-left">
+      <button class="icon-btn" id="btnSearch" title="搜索历史消息" aria-label="搜索历史消息">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+      </button>
       <div class="logo-dot"></div>
       <div class="topbar-title">
         <span class="app-name">股研助手</span>
@@ -116,6 +119,16 @@
       <div class="page-head"><h2>长期记忆</h2><button class="ghost-btn" id="btnConsolidate">🧠 立即整理</button></div>
 
       <div class="mem-stats" id="memStats"></div>
+
+      <div class="card">
+        <div class="card-title">📌 固定规则 <span class="card-sub">最高优先级 · 每次都遵守</span></div>
+        <div id="rulesView" class="rules-view"></div>
+        <div class="rule-add">
+          <input type="text" id="ruleInput" placeholder="例如：只分析A股，回答别超过 5 条" maxlength="200">
+          <button class="primary-btn" id="btnAddRule">添加</button>
+        </div>
+        <p class="hint">你亲口说的规矩（比如"记住：以后都要…""这个说错了，应该是…"）会自动存到这里；也可以手动添加。AI 整理记忆时不会改动这里，每次对话都会强制带上。</p>
+      </div>
 
       <div class="card">
         <div class="card-title">🎯 核心档案 <span class="card-sub">每次对话都会带上</span></div>
@@ -272,6 +285,21 @@
       <button class="primary-btn" id="btnSaveExam">保存</button>
       <button class="danger-btn" id="btnDeleteExam" hidden>删除</button>
     </div>
+  </div>
+</div>
+
+<!-- 弹窗：搜索历史消息 -->
+<div class="modal" id="searchModal" hidden>
+  <div class="modal-mask" data-close></div>
+  <div class="modal-sheet search-sheet">
+    <div class="modal-head"><h3>🔍 搜索历史消息</h3><button class="modal-close" data-close>✕</button></div>
+    <div class="search-bar">
+      <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+      <input type="search" id="searchInput" placeholder="输入关键词，搜所有对话…" autocomplete="off">
+      <button class="search-clear" id="searchClear" hidden>✕</button>
+    </div>
+    <div class="search-hint" id="searchHint">搜你在自由聊股和所有选股研究里说过的每句话 · 点结果可跳转</div>
+    <div class="search-results" id="searchResults"></div>
   </div>
 </div>
 

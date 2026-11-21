@@ -141,13 +141,14 @@
   async function ensureProfile() {
     let p = await DB.get('profile', 'main');
     if (!p) {
-      p = { id: 'main', summary: '', facts: [], goals: [], updatedAt: now() };
+      p = { id: 'main', summary: '', facts: [], goals: [], rules: [], updatedAt: now() };
       await DB.put('profile', p);
     }
     // normalize：无论数据来自旧版本还是手动导入，都补齐成完整结构
     p.summary = typeof p.summary === 'string' ? p.summary : '';
     p.facts = Array.isArray(p.facts) ? p.facts : [];
     p.goals = Array.isArray(p.goals) ? p.goals : [];
+    p.rules = Array.isArray(p.rules) ? p.rules : []; // 用户明确要求的固定规则/更正，最高优先级，不参与自动整理
     p.updatedAt = p.updatedAt || now();
     return p;
   }
@@ -204,11 +205,16 @@ ${(exam.subjects || []).map(s => `  · ${s.name}${s.done ? ' [已研究]' : ' [�
 ` : '\n【当前状态】选股研究模式下尚未选定专题。请主动给用户几个具体的选股方向供挑选，或提醒用户到「专题」页新建一个研究专题。\n';
     }
 
-    if (!S.memory) {
-      return { text: `${persona}\n${examBlock}`, layers: ['基础人设'] };
-    }
-
     const profile = await ensureProfile();
+
+    // 固定规则：无论"记忆开关"是否开启，都强制注入，且放在最前面、最高优先级
+    let rulesBlock = '';
+    if (profile.rules && profile.rules.length) {
+      rulesBlock = `\n【用户明确要求的固定规则 —— 必须无条件遵守，优先级高于本提示词中所有其它内容】\n以下是用户亲自定下或更正过的规矩，每一条你在每一次回答中都必须严格遵守，不得违背、不得自行简化、不得被其它记忆覆盖：\n${profile.rules.map((r, i) => `  ${i + 1}. ${typeof r === 'string' ? r : r.text}`).join('\n')}\n`;
+    }
+    if (!S.memory) {
+      return { text: `${persona}${rulesBlock}\n${examBlock}`, layers: ['基础人设', ...(rulesBlock ? ['固定规则×' + profile.rules.length] : [])] };
+    }
     const key = activeKey();
     const digests = await DB.digestsByExam(key);
     const recentDigests = digests.slice(-3);
@@ -216,9 +222,10 @@ ${(exam.subjects || []).map(s => `  · ${s.name}${s.done ? ' [已研究]' : ' [�
 
     const layers = ['基础人设'];
     if (isExam) layers.push('研究专题');
+    if (rulesBlock) layers.push('固定规则×' + profile.rules.length);
     let text = `${persona}
 你拥有跨越数月甚至数年的长期记忆，会主动结合下面提供的历史记忆来理解用户。若记忆与当前问题相关，自然地使用它们，但不要刻意炫耀"我记得"。
-${examBlock}`;
+${rulesBlock}${examBlock}`;
 
     if (profile.summary || profile.facts.length || profile.goals.length) {
       layers.push('核心档案');
@@ -308,6 +315,7 @@ ${convo}
         summary: String(parsed.summary || '').slice(0, 800),
         goals: asArr(parsed.goals).slice(0, 40),
         facts: asArr(parsed.facts).slice(-60).map(t => ({ text: String(t).slice(0, 200), ts: now() })),
+        rules: profile.rules || [], // 固定规则由用户掌控，整理时不交给 AI 重写，原样保留
         updatedAt: now(),
       });
       await DB.put('digests', {
@@ -712,6 +720,8 @@ ${convo}
     state.messages.push(userMsg);
     await DB.put('messages', userMsg);
     appendMsgBubble(userMsg);
+    // 自动识别"记住/规则/更正"类指令，存为固定规则（异步，不阻塞发送）
+    if (text) detectRuleFromMessage(text);
 
     // 组装发给 API 的消息（系统提示 + 最近 N 条 + 当前输入）
     const plan = buildPlan(images.length > 0);
@@ -1116,6 +1126,14 @@ ${convo}
       <div class="stat-box"><div class="stat-num">${digests.length}</div><div class="stat-label">记忆摘要</div></div>
       <div class="stat-box"><div class="stat-num">${p.facts.length}</div><div class="stat-label">记住的事实</div></div>`;
 
+    const rv = $('#rulesView');
+    if (rv) rv.innerHTML = p.rules.length
+      ? p.rules.map((r, i) => {
+          const t = typeof r === 'string' ? r : r.text;
+          return '<div class="rule-item"><span class="rule-num">' + (i + 1) + '</span><span class="rule-text">' + escHtml(t) + '</span><button class="rule-del" data-rule-del="' + i + '" title="删除">✕</button></div>';
+        }).join('')
+      : '<div class="rules-empty">还没有固定规则。直接在对话里说「记住：…」就会自动存进来，或在下面手动添加。</div>';
+
     $('#profileView').innerHTML = `
       ${p.summary ? `<div class="profile-section"><b>总体情况</b>${escHtml(p.summary)}</div>` : '<div class="profile-section">（暂无，聊天几次后 AI 会自动归纳）</div>'}
       ${p.goals.length ? `<div class="profile-section"><b>目标</b>${p.goals.map(g => `<div class="fact-item">• ${escHtml(g)}</div>`).join('')}</div>` : ''}
@@ -1177,6 +1195,169 @@ ${convo}
     $$('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + view));
     $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
     if (view === 'memory') renderMemory();
+  }
+
+  // ============================================================
+  // 历史消息搜索：跨所有会话（自由聊股 + 各选股研究）
+  // ============================================================
+  let searchTimer = null;
+  let searchScopeName = {};
+
+  function msgText(m) {
+    let t = '';
+    if (typeof m.content === 'string') t = m.content;
+    else if (Array.isArray(m.content)) t = m.content.map(p => (p && p.type === 'text') ? (p.text || '') : (p && p.type === 'image_url' ? '[图片]' : '')).join(' ');
+    if (m.images && m.images.length) t += ' [图片]';
+    return t;
+  }
+
+  function hl(text, q) {
+    const safe = escHtml(text);
+    if (!q) return safe;
+    const qe = escHtml(q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    try { return safe.replace(new RegExp(qe, 'gi'), mm => '<mark>' + mm + '</mark>'); }
+    catch { return safe; }
+  }
+
+  function scopeName(m) {
+    const key = m.examId || GLOBAL;
+    if (key === GLOBAL) return '自由聊股';
+    return searchScopeName[key] || '某次研究';
+  }
+
+  async function openSearch() {
+    const exams = await DB.all('exams');
+    searchScopeName = {};
+    exams.forEach(e => { searchScopeName[e.id] = e.name; });
+    $('#searchModal').hidden = false;
+    const inp = $('#searchInput');
+    inp.value = '';
+    $('#searchClear').hidden = true;
+    $('#searchResults').innerHTML = '';
+    $('#searchHint').hidden = false;
+    setTimeout(() => inp.focus(), 80);
+  }
+
+  function runSearch() {
+    const q = ($('#searchInput').value || '').trim();
+    $('#searchClear').hidden = !q;
+    const box = $('#searchResults');
+    if (!q) {
+      box.innerHTML = '';
+      $('#searchHint').hidden = false;
+      return;
+    }
+    $('#searchHint').hidden = true;
+    DB.all('messages').then(all => {
+      const kw = q.toLowerCase();
+      const hits = all
+        .filter(m => m.role !== 'system' && msgText(m).toLowerCase().includes(kw))
+        .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+      if (!hits.length) {
+        box.innerHTML = '<div class="search-empty">没有找到包含「' + escHtml(q) + '」的消息。<br>换个词试试，或检查是否在其他对话里。</div>';
+        return;
+      }
+      const show = hits.slice(0, 100);
+      box.innerHTML = '<div class="search-count">找到 ' + hits.length + ' 条' + (hits.length > show.length ? '，显示最近 ' + show.length + ' 条' : '') + ' · 点一条跳转过去</div>'
+        + show.map(m => {
+          const isMe = m.role === 'user';
+          const txt = msgText(m);
+          const time = m.ts ? new Date(m.ts).toLocaleString('zh-CN', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+          return '<div class="search-item" data-jump="' + escHtml(m.id) + '" data-exam="' + escHtml(m.examId || GLOBAL) + '">'
+            + '<div class="search-item-head"><span class="search-role' + (isMe ? ' me' : '') + '">' + (isMe ? '我' : 'AI') + '</span>'
+            + '<span class="search-scope">' + escHtml(scopeName(m)) + '</span>'
+            + '<span class="search-time">' + time + '</span></div>'
+            + '<div class="search-text">' + hl(txt, q) + '</div></div>';
+        }).join('');
+    }).catch(() => {
+      box.innerHTML = '<div class="search-empty">搜索失败，请重试。</div>';
+    });
+  }
+
+  function bindSearch() {
+    const btn = $('#btnSearch');
+    if (btn) btn.addEventListener('click', openSearch);
+    const inp = $('#searchInput');
+    if (inp) inp.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(runSearch, 120);
+    });
+    const clear = $('#searchClear');
+    if (clear) clear.addEventListener('click', () => {
+      inp.value = ''; runSearch(); inp.focus();
+    });
+    const res = $('#searchResults');
+    if (res) res.addEventListener('click', async e => {
+      const item = e.target.closest('[data-jump]');
+      if (!item) return;
+      const id = item.dataset.jump;
+      const examId = item.dataset.exam;
+      $('#searchModal').hidden = true;
+      if (examId === GLOBAL) {
+        if (state.chatMode !== 'chat') await setChatMode('chat', false);
+        state.examId = null;
+        localStorage.removeItem('stockai.currentExam');
+      } else {
+        state.examId = examId;
+        localStorage.setItem('stockai.currentExam', examId);
+        if (state.chatMode !== 'exam') await setChatMode('exam', false);
+      }
+      await loadMessages();
+      renderExams(); renderBanner(); updateCtxLabel();
+      go('chat');
+      setTimeout(() => {
+        const node = $$('#msgList .msg').find(n => {
+          const b = n.querySelector('[data-del]');
+          return b && b.dataset.del === id;
+        });
+        if (node) {
+          node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          node.classList.add('msg-flash');
+          setTimeout(() => node.classList.remove('msg-flash'), 2200);
+        } else {
+          toast('已跳到该对话，请上下找一下这条消息');
+        }
+      }, 120);
+    });
+  }
+
+  // ============================================================
+  // 固定规则：用户明确说出的规矩/更正，永久记住并每次注入
+  // ============================================================
+  async function addRule(text) {
+    text = String(text || '').trim().replace(/^(请记住|记住|记一下|注意)[:：,，]?\s*/, '').trim();
+    if (!text) return false;
+    const p = await ensureProfile();
+    const existing = p.rules.map(r => typeof r === 'string' ? r : r.text);
+    if (existing.some(t => t === text)) return false; // 去重
+    p.rules.push({ text: text.slice(0, 200), ts: now() });
+    await DB.put('profile', p);
+    renderMemory();
+    return true;
+  }
+
+  async function removeRule(idx) {
+    const p = await ensureProfile();
+    if (idx < 0 || idx >= p.rules.length) return;
+    p.rules.splice(idx, 1);
+    await DB.put('profile', p);
+    renderMemory();
+  }
+
+  // 检测用户消息里是否包含"要求长期记住"的指令，自动存为固定规则
+  async function detectRuleFromMessage(text) {
+    if (!text) return;
+    const patterns = [
+      /(记住|记好|别忘了|以后都|每次都|每次回答|一直都要|始终|今后).{2,}/,
+      /(不许|不准|不要再|别再|禁止|必须|一定要|务必).{2,}/,
+      /(规则是|规矩是|要求是|我要求|我的要求是|按我的规则|改成).{2,}/,
+      /(更正|纠正|说错了|我说错|应该是|正确的是).{2,}/,
+    ];
+    if (!patterns.some(re => re.test(text))) return;
+    let rule = text.replace(/^(请?记住|记好|请你记住|别忘了|以后|每次|另外|对了|注意)[:：,，]?\s*/, '').trim();
+    if (rule.length < 3 || rule.length > 200) return;
+    const added = await addRule(rule);
+    if (added) toast('📌 已记住这条规则，以后每次都会遵守（记忆页可删除）', 3200);
   }
 
   // 消息显示样式：给 <html> 打标记，CSS 据此切换通栏 / 气泡
@@ -1480,6 +1661,25 @@ ${convo}
     }));
 
     $('#btnConsolidate').addEventListener('click', () => consolidate(false));
+    // 固定规则：添加 / 删除
+    const btnAddRule = $('#btnAddRule');
+    if (btnAddRule) btnAddRule.addEventListener('click', async () => {
+      const inp = $('#ruleInput');
+      const v = (inp.value || '').trim();
+      if (!v) { toast('请先写一条规则'); return; }
+      const ok = await addRule(v);
+      toast(ok ? '📌 已添加固定规则' : '这条规则已经存在');
+      inp.value = '';
+    });
+    const ruleInput = $('#ruleInput');
+    if (ruleInput) ruleInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); $('#btnAddRule').click(); }
+    });
+    const rulesView = $('#rulesView');
+    if (rulesView) rulesView.addEventListener('click', e => {
+      const del = e.target.closest('[data-rule-del]');
+      if (del) removeRule(+del.dataset.ruleDel);
+    });
     $('#btnExport').addEventListener('click', async () => {
       const data = await DB.exportAll();
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1506,6 +1706,7 @@ ${convo}
     $('#btnDavUpload').addEventListener('click', davUpload);
     $('#btnDavDownload').addEventListener('click', davDownload);
     bindSettings();
+    bindSearch();
   }
 
   // ============================================================

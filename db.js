@@ -88,6 +88,51 @@ const DB = (() => {
         for (const obj of (data[store] || [])) await api.put(store, obj);
       }
       return true;
+    },
+    // 合并式同步：把传入数据与本机数据按主键合并，互不覆盖。
+    // messages/exams/digests/meta：同主键取时间戳较新的一条；
+    // profile.main 的 facts/rules/goals：取并集去重，保证两台设备各自记的内容都不丢。
+    async mergeAll(data) {
+      if (!data || data.app !== 'stock-ai-shell') throw new Error('文件格式不正确');
+      const keyOf = (store, o) => store === 'meta' ? o.key : o.id;
+      const tsOf = o => o.updatedAt || o.createdAt || o.ts || 0;
+      const stats = {};
+      for (const store of ['exams', 'messages', 'digests', 'meta', 'profile']) {
+        const local = await api.all(store);
+        const incoming = Array.isArray(data[store]) ? data[store] : [];
+        const map = new Map();
+        for (const o of local) map.set(keyOf(store, o), o);
+        for (const o of incoming) {
+          const k = keyOf(store, o);
+          if (k == null) continue;
+          const prev = map.get(k);
+          if (!prev || tsOf(o) >= tsOf(prev)) map.set(k, o);
+        }
+        // profile 的 main 记录：事实/规则/目标取并集，避免任何一边丢失
+        if (store === 'profile' && map.has('main')) {
+          const merged = map.get('main');
+          const lp = local.find(x => x.id === 'main') || {};
+          const ip = incoming.find(x => x.id === 'main') || {};
+          const uniq = arr => {
+            const seen = new Set(), out = [];
+            for (const it of (Array.isArray(arr) ? arr : [])) {
+              const key = typeof it === 'string' ? it : (it && it.text) || JSON.stringify(it);
+              if (seen.has(key)) continue;
+              seen.add(key); out.push(it);
+            }
+            return out;
+          };
+          merged.facts = uniq([...(lp.facts || []), ...(ip.facts || [])]);
+          merged.rules = uniq([...(lp.rules || []), ...(ip.rules || [])]);
+          merged.goals = uniq([...(lp.goals || []), ...(ip.goals || [])]);
+          merged.summary = merged.summary || lp.summary || ip.summary || '';
+          merged.updatedAt = Date.now();
+        }
+        await api.clear(store);
+        for (const o of map.values()) await api.put(store, o);
+        stats[store] = map.size;
+      }
+      return stats;
     }
   };
   return api;

@@ -1,6 +1,6 @@
 {
-  "name": "股研助手 · 选股研究",
-  "short_name": "股研助手",
+  "name": "股票AI · 选股研究",
+  "short_name": "股票AI",
   "description": "接入你自己 DeepSeek API 的股票研究助手，给具体行业方向和个股候选，带长期记忆",
   "start_url": "./index.html",
   "scope": "./",

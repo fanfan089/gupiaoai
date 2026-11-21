@@ -30,7 +30,7 @@
 - 尽量用清单或表格呈现候选（代码 / 名称 / 逻辑 / 关注点），观点鲜明，敢下判断。
 - 需要最新行情、消息、数据时，主动使用联网搜索工具去查，不要凭空编造具体价格或新闻。`;
 
-  const STOCK_PERSONA_CHAT = `你是"股研助手"，一位专业、直接、有主见的 A 股/港股/美股研究搭档。用户找你就是聊股票——行情解读、板块逻辑、个股分析、持仓答疑、概念科普都可以。请用中文，观点鲜明、敢下判断、有实质内容，多用清单和表格。${STOCK_DISCIPLINE}`;
+  const STOCK_PERSONA_CHAT = `你是"股票AI"，一位专业、直接、有主见的 A 股/港股/美股研究搭档。用户找你就是聊股票——行情解读、板块逻辑、个股分析、持仓答疑、概念科普都可以。请用中文，观点鲜明、敢下判断、有实质内容，多用清单和表格。${STOCK_DISCIPLINE}`;
 
   const STOCK_PERSONA_PICK = `你是"选股研究官"，一位以给出明确结论著称的股票研究助理。你的天职就是帮用户选行业、选方向、选具体个股，用户来这里就是要一份能直接参考的候选清单，而不是一堂风险教育课。请用中文，结论先行、观点犀利、清单化输出。${STOCK_DISCIPLINE}`;
 
@@ -364,7 +364,7 @@ ${convo}
     const wrap = document.createElement('div');
     wrap.className = 'msg ' + (m.role === 'user' ? 'me' : 'ai');
     const avatar = m.role === 'user' ? '我' : '🎓';
-    const name = m.role === 'user' ? '' : '<div class="msg-name">股研助手</div>';
+    const name = m.role === 'user' ? '' : '<div class="msg-name">股票AI</div>';
     const imgsHtml = (!streamEl && m.images && m.images.length)
       ? `<div class="msg-images">${m.images.map((src, i) => `<img src="${src}" data-preview="${i}" alt="图片 ${i + 1}">`).join('')}</div>` : '';
     const voiceBtn = m.role === 'assistant'
@@ -1473,9 +1473,8 @@ ${convo}
     return { fileUrl: url + '/' + encodeURIComponent(file), token };
   }
   function davBusy(on) {
-    const up = $('#btnDavUpload'), down = $('#btnDavDownload');
-    if (up) up.disabled = on;
-    if (down) down.disabled = on;
+    const ids = ['#btnDavUpload', '#btnDavDownload', '#btnSync'];
+    ids.forEach(id => { const el = $(id); if (el) el.disabled = on; });
   }
   async function davUpload() {
     let started = false;
@@ -1527,6 +1526,56 @@ ${convo}
     } catch (e) {
       davStatus('❌ 下载失败：' + e.message, 'err');
       toast('下载失败：' + e.message, 3500);
+      if (started) davBusy(false);
+    }
+  }
+
+  // 一键同步：读取云端 → 与本机合并（不覆盖）→ 写回本机 → 回传云端 → 刷新
+  async function davSync() {
+    let started = false;
+    try {
+      const { fileUrl, token } = davConfig();
+      davBusy(true); started = true;
+      davStatus('① 正在读取云端备份…');
+      toast('① 正在读取云端备份…', 6000);
+      const res = await fetch(fileUrl, { method: 'GET', headers: { 'Authorization': 'Basic ' + token } });
+      let cloud = null;
+      if (res.status === 200) {
+        cloud = await res.json();
+      } else if (res.status !== 404) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      davStatus('② 正在合并本机与云端数据…');
+      toast('② 正在合并本机与云端数据…', 6000);
+      let stats = null;
+      if (cloud) {
+        stats = await DB.mergeAll(cloud);
+      } else {
+        // 云端暂无备份：视为首次同步，直接把本机数据作为合并结果
+        stats = { messages: (await DB.countMessages()) };
+      }
+      davStatus('③ 正在回传合并结果…');
+      toast('③ 正在回传合并结果…', 6000);
+      const data = await DB.exportAll();
+      data.syncedAt = Date.now();
+      const size = (JSON.stringify(data).length / 1024).toFixed(1);
+      const put = await fetch(fileUrl, {
+        method: 'PUT',
+        headers: { 'Authorization': 'Basic ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!put.ok) {
+        const t = await put.text().catch(() => '');
+        throw new Error(`HTTP ${put.status} ${t.slice(0, 100)}`);
+      }
+      const n = stats.messages != null ? stats.messages : data.messages.length;
+      const msg = `✅ 已同步 · 共 ${n} 条对话 · ${size}KB · ${new Date().toLocaleTimeString('zh-CN')}`;
+      davStatus(msg, 'ok');
+      toast(msg, 3500);
+      setTimeout(() => location.reload(), 1000);
+    } catch (e) {
+      davStatus('❌ 同步失败：' + e.message, 'err');
+      toast('同步失败：' + e.message, 4000);
       if (started) davBusy(false);
     }
   }
@@ -1705,6 +1754,7 @@ ${convo}
     $('#btnTest').addEventListener('click', testConnection);
     $('#btnDavUpload').addEventListener('click', davUpload);
     $('#btnDavDownload').addEventListener('click', davDownload);
+    $('#btnSync').addEventListener('click', davSync);
     bindSettings();
     bindSearch();
   }
